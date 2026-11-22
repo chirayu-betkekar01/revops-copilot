@@ -1481,6 +1481,9 @@ dev = [
     { name = "streamlit" },
     { name = "uvicorn", extra = ["standard"] },
 ]
+seed = [
+    { name = "httpx" },
+]
 
 [package.metadata]
 
@@ -1504,6 +1507,7 @@ dev = [
     { name = "streamlit", specifier = ">=1.67.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
+seed = [{ name = "httpx", specifier = ">=0.28.1" }]
 
 [[package]]
 name = "rpds-py"

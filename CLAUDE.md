@@ -18,7 +18,7 @@ A portfolio project that pulls deals from HubSpot, forecasts quarterly bookings,
 2. **Explain before coding.** Describe the design, the alternatives and the trade-offs in a few bullets, then wait for my go-ahead before writing code.
 3. **Respect hand-written files.** Files marked ✋ in SCOPE.md are written by me. You may review them and suggest changes with reasons, but never write or edit them unless I explicitly ask. Current ✋ list:
    - `docker-compose.yml` (Step 1)
-   - Data generator logic in `seed_hubspot.py` (Step 2)
+   - ~~Data generator logic in `seed/generator.py` (Step 2)~~ written by Claude at my request
    - Upsert SQL in the sync (Step 3)
    - Forecast SQL query (Step 4)
    - Entire comp engine `comp/engine.py` (Step 5)
@@ -32,8 +32,9 @@ A portfolio project that pulls deals from HubSpot, forecasts quarterly bookings,
 
 - [x] Step 0: accounts and tools. HubSpot developer test account + service key (rotated after exposure, stored outside the repo). Git, uv, just, Docker Desktop, Claude Code installed on Windows. AWS account setup deferred until Step 6.
 - [x] Step 1: repo + Docker Compose. db + api + dashboard run via `just up`; API waits for the db healthcheck (`condition: service_healthy`). `docker-compose.yml` was written by Claude at my request; I did the break-it fix. Local ports: db 5433, api 8010 (5432 and 8000 are used by another project).
-- [ ] **Step 2: seed HubSpot. NEXT.** I hand-write the data generator in `seed_hubspot.py`.
-- [ ] Steps 3-7: see SCOPE.md "MVP build guide".
+- [x] Step 2: seed HubSpot. 300 companies, 2,000 deals and ~6,400 notes uploaded (`seed_batch=seed-v1`); 8 named reps via the `rep_id` dropdown (stores id, shows name). Generator and 429 backoff written by Claude at my request. Known gap: HubSpot stage history can't be backdated (matters for weekend 2-3 forecasting).
+- [ ] **Step 3: sync into raw. NEXT.** I hand-write the upsert SQL.
+- [ ] Steps 4-7: see SCOPE.md "MVP build guide".
 
 Update this section when a step is finished.
 

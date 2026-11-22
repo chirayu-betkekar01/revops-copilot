@@ -17,10 +17,14 @@ dashboard = [
     "httpx>=0.28.1",
     "streamlit>=1.67.0",
 ]
-# Your laptop gets everything: both app groups plus the dev tools.
+seed = [
+    "httpx>=0.28.1",
+]
+# Your laptop gets everything: all groups above plus the dev tools.
 dev = [
     { include-group = "api" },
     { include-group = "dashboard" },
+    { include-group = "seed" },
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "ruff>=0.17.6",

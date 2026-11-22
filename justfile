@@ -26,6 +26,18 @@ logs:
 psql:
     docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 
+# Generate fake data and check it, without touching HubSpot
+seed-dry:
+    uv run python -m seed.seed_hubspot --dry-run
+
+# Push fake data into your HubSpot test account (asks before creating anything)
+seed:
+    uv run python -m seed.seed_hubspot
+
+# Step 2 break-it: hammer HubSpot (read-only) until it answers 429
+rate-limit-demo:
+    uv run python -m seed.rate_limit_demo
+
 # Run the test suite
 test:
     uv run pytest
@@ -34,4 +46,4 @@ test:
 lint:
     uv run ruff check .
     uv run ruff format --check .
-    uv run mypy app dashboard tests
+    uv run mypy app dashboard seed tests
