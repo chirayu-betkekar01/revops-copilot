@@ -1484,6 +1484,10 @@ dev = [
 seed = [
     { name = "httpx" },
 ]
+sync = [
+    { name = "httpx" },
+    { name = "psycopg", extra = ["binary"] },
+]
 
 [package.metadata]
 
@@ -1508,6 +1512,10 @@ dev = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 seed = [{ name = "httpx", specifier = ">=0.28.1" }]
+sync = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.9" },
+]
 
 [[package]]
 name = "rpds-py"

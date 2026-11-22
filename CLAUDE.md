@@ -19,7 +19,7 @@ A portfolio project that pulls deals from HubSpot, forecasts quarterly bookings,
 3. **Respect hand-written files.** Files marked ✋ in SCOPE.md are written by me. You may review them and suggest changes with reasons, but never write or edit them unless I explicitly ask. Current ✋ list:
    - `docker-compose.yml` (Step 1)
    - ~~Data generator logic in `seed/generator.py` (Step 2)~~ written by Claude at my request
-   - Upsert SQL in the sync (Step 3)
+   - ~~Upsert SQL in the sync (Step 3)~~ written by Claude at my request
    - Forecast SQL query (Step 4)
    - Entire comp engine `comp/engine.py` (Step 5)
    - Agent loop in `agents/analyst.py` (Step 6)
@@ -28,13 +28,16 @@ A portfolio project that pulls deals from HubSpot, forecasts quarterly bookings,
 6. **End each step with:** a summary of what changed, the break-it exercise from SCOPE.md, and 2-3 self-check questions for me to answer.
 7. **Never invent numbers.** Forecasts and payouts come from deterministic code; agents call tools for every figure.
 
+**Current mode (from 2026-11-22): build first, learn later.** Claude builds each step end to end, including ✋ files, without stopping for go-aheads on routine design. Every design decision (what, alternatives, why, when to revisit) goes into `docs/notes/decisions.md` so we can review them all later.
+
 ## Current status
 
 - [x] Step 0: accounts and tools. HubSpot developer test account + service key (rotated after exposure, stored outside the repo). Git, uv, just, Docker Desktop, Claude Code installed on Windows. AWS account setup deferred until Step 6.
 - [x] Step 1: repo + Docker Compose. db + api + dashboard run via `just up`; API waits for the db healthcheck (`condition: service_healthy`). `docker-compose.yml` was written by Claude at my request; I did the break-it fix. Local ports: db 5433, api 8010 (5432 and 8000 are used by another project).
 - [x] Step 2: seed HubSpot. 300 companies, 2,000 deals and ~6,400 notes uploaded (`seed_batch=seed-v1`); 8 named reps via the `rep_id` dropdown (stores id, shows name). Generator and 429 backoff written by Claude at my request. Known gap: HubSpot stage history can't be backdated (matters for weekend 2-3 forecasting).
-- [ ] **Step 3: sync into raw. NEXT.** I hand-write the upsert SQL.
-- [ ] Steps 4-7: see SCOPE.md "MVP build guide".
+- [x] Step 3: sync into raw. `just migrate` creates raw.hubspot_{companies,deals,notes,pipelines} (JSONB payloads) + ops.sync_runs; `just sync` does a full paged sync with per-page commits and upserts. Verified: two real syncs give exactly 300 / 2,000 / 6,456 / 1 rows.
+- [ ] **Step 4: views + weighted forecast. NEXT.**
+- [ ] Steps 5-7: see SCOPE.md "MVP build guide".
 
 Update this section when a step is finished.
 
@@ -82,6 +85,10 @@ just logs      # docker compose logs -f
 just psql      # open psql in the db container
 just test      # uv run pytest
 just lint      # ruff check + ruff format --check + mypy
+just seed-dry  # generate + check fake data, send nothing
+just seed      # push fake data to HubSpot (asks first)
+just migrate   # create/update tables from sql/migrations (safe to re-run)
+just sync      # full sync HubSpot -> raw.* tables, logged in ops.sync_runs
 ```
 
 ## Security rules

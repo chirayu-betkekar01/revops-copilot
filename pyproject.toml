@@ -20,11 +20,16 @@ dashboard = [
 seed = [
     "httpx>=0.28.1",
 ]
+sync = [
+    "httpx>=0.28.1",
+    "psycopg[binary]>=3.3.9",
+]
 # Your laptop gets everything: all groups above plus the dev tools.
 dev = [
     { include-group = "api" },
     { include-group = "dashboard" },
     { include-group = "seed" },
+    { include-group = "sync" },
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "ruff>=0.17.6",

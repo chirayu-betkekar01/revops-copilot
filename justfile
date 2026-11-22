@@ -34,6 +34,14 @@ seed-dry:
 seed:
     uv run python -m seed.seed_hubspot
 
+# Create/update database tables (safe to run any time)
+migrate:
+    uv run python -m sync.migrate
+
+# Copy everything from HubSpot into the raw.* tables
+sync:
+    uv run python -m sync.hubspot
+
 # Step 2 break-it: hammer HubSpot (read-only) until it answers 429
 rate-limit-demo:
     uv run python -m seed.rate_limit_demo
@@ -46,4 +54,4 @@ test:
 lint:
     uv run ruff check .
     uv run ruff format --check .
-    uv run mypy app dashboard seed tests
+    uv run mypy app dashboard seed sync tests
