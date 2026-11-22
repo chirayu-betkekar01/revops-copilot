@@ -1,9 +1,10 @@
-"""Apply every SQL file in sql/migrations, in name order.
+"""Apply every SQL file in sql/migrations, then every view in sql/views, in name order.
 
     just migrate
 
-Each file must be safe to re-run (CREATE TABLE IF NOT EXISTS etc.), so running this
-after every `just up` is harmless. A heavier tool (Alembic) can replace this later.
+Each file must be safe to re-run (CREATE TABLE IF NOT EXISTS, DROP VIEW ... CREATE VIEW),
+so running this after every `just up` or every SQL change is harmless.
+A heavier tool (Alembic) can replace this later.
 """
 
 import os
@@ -11,15 +12,17 @@ from pathlib import Path
 
 import psycopg
 
-MIGRATIONS_DIR = Path("sql/migrations")
+# Tables first, then the views that read them.
+SQL_DIRS = (Path("sql/migrations"), Path("sql/views"))
 
 
 def migrate(conn: psycopg.Connection) -> list[str]:
     applied = []
-    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-        # No parameters, so psycopg sends the file as one script (multiple statements are fine).
-        conn.execute(path.read_text(encoding="utf-8"))
-        applied.append(path.name)
+    for directory in SQL_DIRS:
+        for path in sorted(directory.glob("*.sql")):
+            # No parameters, so psycopg sends the file as one script (multiple statements ok).
+            conn.execute(path.read_text(encoding="utf-8"))
+            applied.append(f"{directory.name}/{path.name}")
     return applied
 
 

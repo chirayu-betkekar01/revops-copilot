@@ -6,6 +6,7 @@ Every run pages through every record and upserts it, so running it twice (or re-
 after a crash) never creates duplicates. Each run is logged in ops.sync_runs.
 """
 
+import argparse
 import os
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -55,6 +56,10 @@ OBJECTS = (
         associations=("deals",),
     ),
 )
+
+# Property definitions to copy: (object type, property name). The rep_id dropdown's options
+# are where rep names live, so HubSpot stays the one source of truth for them.
+PROPERTY_DEFINITIONS = (("deals", "rep_id"),)
 
 
 @dataclass(frozen=True)
@@ -135,7 +140,10 @@ def finish_run(
 
 
 def run_sync(
-    conn: psycopg.Connection, hs: HubSpotClient, objects: Sequence[SyncObject] = OBJECTS
+    conn: psycopg.Connection,
+    hs: HubSpotClient,
+    objects: Sequence[SyncObject] = OBJECTS,
+    property_definitions: Sequence[tuple[str, str]] = PROPERTY_DEFINITIONS,
 ) -> SyncResult:
     upsert = load_upsert_sql()
     run_id = start_run(conn)
@@ -143,6 +151,12 @@ def run_sync(
     try:
         pipelines = hs.get("/crm/v3/pipelines/deals")["results"]  # small: no paging needed
         counts["pipelines"] = upsert_page(conn, upsert, "hubspot_pipelines", pipelines)
+
+        definitions = [
+            {"id": f"{object_type}.{name}", **hs.get(f"/crm/v3/properties/{object_type}/{name}")}
+            for object_type, name in property_definitions
+        ]
+        counts["properties"] = upsert_page(conn, upsert, "hubspot_properties", definitions)
 
         for obj in objects:
             counts[obj.object_type] = 0
@@ -157,12 +171,36 @@ def run_sync(
     return SyncResult(run_id, counts)
 
 
-def main() -> None:
+RAW_TABLES = (
+    "hubspot_companies",
+    "hubspot_deals",
+    "hubspot_notes",
+    "hubspot_pipelines",
+    "hubspot_properties",
+)
+
+
+def empty_raw_tables(conn: psycopg.Connection) -> None:
+    """Full refresh: a normal sync only adds and updates, so records archived or deleted in
+    HubSpot would otherwise linger here forever. raw.* is a copy, so emptying it loses nothing
+    that the next sync doesn't bring back."""
+    tables = sql.SQL(", ").join(sql.Identifier("raw", t) for t in RAW_TABLES)
+    conn.execute(sql.SQL("TRUNCATE {}").format(tables))
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Full sync from HubSpot into raw.* tables")
+    parser.add_argument("--full-refresh", action="store_true", help="empty the raw tables first")
+    args = parser.parse_args(argv)
+
     # autocommit=True: each `with conn.transaction()` block is then a real, separate commit.
     with (
         psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn,
         HubSpotClient.from_env() as hs,
     ):
+        if args.full_refresh:
+            empty_raw_tables(conn)
+            print("Emptied raw tables (full refresh).")
         result = run_sync(conn, hs)
     print(f"Sync run {result.run_id} finished: {result.counts}")
 

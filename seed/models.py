@@ -9,7 +9,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 # Written to every seeded company and deal, so seeded data can be found (and deleted) later.
-SEED_BATCH = "seed-v1"
+SEED_BATCH = "seed-v2"  # v1 (no stage funnel) was archived on 2026-11-22
 
 
 @dataclass(frozen=True)

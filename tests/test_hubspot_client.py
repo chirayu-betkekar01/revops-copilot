@@ -127,6 +127,51 @@ def test_check_can_write_raises_on_missing_scope() -> None:
     assert exc_info.value.status == 403
 
 
+def test_search_ids_follows_the_cursor() -> None:
+    pages = iter(
+        [
+            {"results": [{"id": "1"}, {"id": "2"}], "paging": {"next": {"after": "2"}}},
+            {"results": [{"id": "3"}]},
+        ]
+    )
+    afters: list[object] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        afters.append(json.loads(request.content).get("after"))
+        return httpx.Response(200, json=next(pages))
+
+    assert make_client(handler).search_ids("deals", "seed_batch", "seed-v1") == ["1", "2", "3"]
+    assert afters == [None, "2"]
+
+
+def test_associated_ids_collects_linked_records() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/crm/v4/associations/deals/notes/batch/read"
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {"from": {"id": "d1"}, "to": [{"toObjectId": 11}, {"toObjectId": 12}]},
+                    {"from": {"id": "d2"}, "to": [{"toObjectId": 12}]},
+                ]
+            },
+        )
+
+    assert make_client(handler).associated_ids("deals", "notes", ["d1", "d2"]) == ["11", "12"]
+
+
+def test_batch_archive_sends_ids_in_chunks() -> None:
+    sizes: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sizes.append(len(json.loads(request.content)["inputs"]))
+        return httpx.Response(204)
+
+    make_client(handler).batch_archive("deals", [str(i) for i in range(150)])
+
+    assert sizes == [100, 50]
+
+
 def test_create_property_returns_false_when_it_already_exists() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(409, json={"message": "Property already exists"})

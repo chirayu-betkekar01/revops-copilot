@@ -154,3 +154,93 @@ Format: **Decision**: what we did. *Alternatives*: what else we could have done.
 34. **The idempotency test uses real Postgres with fake `test-` ids and cleans up after itself.**
     *Alternatives*: a separate test database. *Why*: no extra setup. *Revisit*: a dedicated
     test DB once tests get heavier.
+
+## Step 4: Views and weighted forecast
+
+35. **Layered views: `staging.stg_*` (typed columns from JSON) -> `marts.*` (business-ready).**
+    `stg_pipeline_stages`, `stg_deals`, `stg_companies`; `marts.dim_reps`, `marts.fct_deals`.
+    *Alternatives*: one big view; dbt now. *Why*: each layer has one job and can be tested on
+    its own; this is the exact shape dbt will take over in weekend 2.
+
+36. **View files are `DROP VIEW IF EXISTS ... CASCADE; CREATE VIEW`, applied by `just migrate`
+    after the table migrations, in file-name order** (010, 011, 020...).
+    *Alternatives*: `CREATE OR REPLACE VIEW` (can't drop or rename columns).
+    *Why*: views can change shape freely; CASCADE drops dependents, which the later files
+    immediately recreate. *Revisit*: dbt manages this from weekend 2.
+
+37. **Defensive parsing in `stg_deals`**: an amount that isn't a plain number becomes NULL
+    (regex check before the cast) instead of crashing the whole view.
+    *Why*: one bad record in HubSpot shouldn't break every report.
+
+38. **Dates converted to plain dates in UTC** (`AT TIME ZONE 'UTC'`).
+    *Why*: HubSpot stores midnight UTC; converting in the server's time zone could push a
+    deal into the previous day, and on the 1st, into the previous quarter.
+
+39. **Won / lost / open come from the stage's metadata** (`isClosed` + probability 1 or 0),
+    not hard-coded stage ids. *Why*: works for any pipeline, including new ones.
+
+40. **LEFT JOINs in `fct_deals`; unknown stage = open at 0%.**
+    *Why*: a deal with a stage or rep we can't match stays visible and gets flagged, instead of
+    silently vanishing from totals (an INNER JOIN would drop it).
+
+41. **Rep names come from HubSpot's `rep_id` dropdown options** (sync now also copies that
+    property definition into `raw.hubspot_properties`).
+    *Alternatives*: a hard-coded reps table in SQL; read `seed/models.py`.
+    *Why*: one source of truth. Rename a rep in HubSpot and the next sync picks it up.
+    Plan and quota columns join in from the comp schema in Step 5.
+
+42. **Forecast = closed-won to date + sum(open amount x stage probability), current quarter.**
+    Open deals still due in an *earlier* quarter are excluded and counted (`n_overdue_prior`);
+    missing amounts count as $0 and unknown stages as 0%, both counted.
+    *Why*: the number stays conservative and every data problem is visible next to it.
+
+43. **Forecast maths lives in one SQL file; Python only runs it and stores the result** in
+    `marts.fct_forecast_runs`, with the building blocks (closed won, open, weighted, counts).
+    *Why*: every number shown anywhere traces back to a stored run; "why did it change since
+    last week" becomes a comparison of two rows. Range columns (p10/p90) stay NULL until the
+    Monte Carlo method in weekend 3.
+
+44. **Forecast reads the current state of deals, so it's only valid for `as_of` = today.**
+    *Why*: no stage history yet (see 21). *Revisit*: point-in-time rebuild for backtests.
+
+45. **Forecast tests run inside a rolled-back transaction, with made-up deals in 2099 Q1.**
+    *Why*: exact expected numbers, real data untouched, real 2025-2026 deals can't leak in.
+
+46. **Finding: the weighted forecast says $2.19M for 2026 Q4, but past quarters booked about
+    $1.0M each.** $1.46M sits in "Contract Sent" at HubSpot's default 90%. Two causes:
+    (a) this is the known weakness of weighted pipeline: default stage probabilities are
+    optimistic and nobody calibrates them; (b) a generator gap: open deals get their stage
+    from how far through the sales cycle they are, *not* from whether they'll win, so
+    late-stage deals here win only ~25% (real teams see far higher late-stage win rates).
+    *Revisit*: make stage depend on outcome in the generator (needs a HubSpot re-seed), and
+    replace default probabilities with historical conversion rates (weekend 2).
+    *Update*: (b) fixed by decision 47. Forecast run 2 on the new data: **$1.63M**. By the
+    generator's own funnel rates the true expectation is roughly $1.4M, so HubSpot's default
+    percentages now overstate by ~15%: a realistic gap, which weekend 2's historical
+    conversion method should close.
+
+47. **Generator models a funnel: losing deals drop out at a stage; winners pass every stage.**
+    `LOSS_STAGE_WEIGHTS = [0.30, 0.25, 0.20, 0.15, 0.10]` picks the stage a loser dies in; an
+    open deal's stage is its time-progress stage, capped at the furthest stage it will reach;
+    a lost deal's close date is when it died (inside that stage).
+    *Alternatives*: simulate each stage-to-stage step with its own conversion rate (same idea,
+    more code); keep time-only stages (unrealistic: every stage won ~25%).
+    *Why*: real pipelines thin out stage by stage. Win rate given the stage reached is now
+    about 25% -> 32% -> 43% -> 57% -> 77%, so stage carries real signal for forecasting.
+    *Side effect*: rep attainment (2026 Q1-Q3) now spans 27%-252%, median 72%.
+    *Revisit*: Step 5, if the comp plan should see more reps near 100%.
+
+48. **Re-seeded as a new batch (`seed-v2`); the old batch was archived, not hard-deleted.**
+    `just seed-archive <batch>` finds records by `seed_batch`, finds the notes through the
+    deals' associations (works around gap 22), shows counts, asks, then archives notes ->
+    deals -> companies. *Why*: archive = HubSpot's recycle bin (restorable ~90 days), the
+    least destructive option; a new batch name keeps old and new data distinguishable.
+
+49. **`just sync --full-refresh` empties the raw tables before syncing.**
+    *Why*: a normal sync only upserts, so archived/deleted HubSpot records would linger in
+    raw (gap 33). *Trade-off*: not atomic: if the sync then fails, raw stays partly empty until
+    the next run. Fine for a local copy that HubSpot can always rebuild.
+
+50. **Forecast run 1 (computed on the old v1 data) is kept in `marts.fct_forecast_runs`.**
+    *Why*: stored runs are history; deleting one to make the record look tidy defeats the
+    point of storing them.

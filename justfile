@@ -34,13 +34,21 @@ seed-dry:
 seed:
     uv run python -m seed.seed_hubspot
 
+# Archive one seed batch in HubSpot (recycle bin, restorable ~90 days). Asks first.
+seed-archive BATCH:
+    uv run python -m seed.archive_seed {{BATCH}}
+
 # Create/update database tables (safe to run any time)
 migrate:
     uv run python -m sync.migrate
 
-# Copy everything from HubSpot into the raw.* tables
-sync:
-    uv run python -m sync.hubspot
+# Copy everything from HubSpot into the raw.* tables (add --full-refresh to empty them first)
+sync *ARGS:
+    uv run python -m sync.hubspot {{ARGS}}
+
+# Weighted pipeline forecast for the current quarter, saved to marts.fct_forecast_runs
+forecast *ARGS:
+    uv run python -m forecast.weighted {{ARGS}}
 
 # Step 2 break-it: hammer HubSpot (read-only) until it answers 429
 rate-limit-demo:
@@ -54,4 +62,4 @@ test:
 lint:
     uv run ruff check .
     uv run ruff format --check .
-    uv run mypy app dashboard seed sync tests
+    uv run mypy app dashboard seed sync forecast tests

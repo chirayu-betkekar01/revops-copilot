@@ -5,7 +5,7 @@ from collections import Counter
 
 import pytest
 
-from seed.generator import AS_OF, EXPANSION_OPENING_NOTES, generate
+from seed.generator import AS_OF, EXPANSION_OPENING_NOTES, furthest_stage, generate
 from seed.models import LOST_STAGE, OPEN_STAGES, REPS, WON_STAGE, Note, SeedData
 from seed.seed_hubspot import validate
 
@@ -62,6 +62,21 @@ def test_expansion_deals_open_with_existing_customer_note(data: SeedData) -> Non
     for deal in data.deals:
         if deal.name.endswith("(Expansion)"):
             assert first_note[deal.ref] in EXPANSION_OPENING_NOTES
+
+
+def test_later_stages_are_more_likely_to_win() -> None:
+    """Funnel check: of the deals that reach a stage, a bigger share are winners each step."""
+    rng = random.Random(1)
+    outcomes = [rng.random() < 0.25 for _ in range(20_000)]  # ~25% overall win rate
+    reached = [(won, furthest_stage(rng, won)) for won in outcomes]
+
+    win_rates = []
+    for stage in range(len(OPEN_STAGES)):
+        at_stage = [won for won, furthest in reached if furthest >= stage]
+        win_rates.append(sum(at_stage) / len(at_stage))
+
+    assert win_rates == sorted(win_rates)  # strictly climbing through the funnel
+    assert win_rates[0] < 0.30 and win_rates[-1] > 0.65
 
 
 def test_rep_names_are_unique() -> None:

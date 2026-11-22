@@ -38,6 +38,11 @@ QUARTER_WEIGHTS = [1.00, 1.05, 1.10, 1.16, 1.22, 1.28]
 # Within a quarter, most deals are planned for month 3 (the end-of-quarter push).
 MONTH_WEIGHTS = [0.25, 0.30, 0.45]
 
+# Of the deals that will be lost, which open stage they drop out of (same order as
+# OPEN_STAGES). Most die early. This is what makes later stages more likely to win:
+# about 25% -> 32% -> 43% -> 57% -> 77% from the first stage to "contract sent".
+LOSS_STAGE_WEIGHTS = [0.30, 0.25, 0.20, 0.15, 0.10]
+
 EXPANSION_SHARE = 0.30
 EXPANSION_WIN_BOOST = 0.12
 MIN_DEAL = 1_500
@@ -138,6 +143,14 @@ def random_close_date(rng: random.Random, year: int, quarter: int) -> date:
     days_in_month = (next_month - first).days
     # random() ** 0.6 pushes values towards 1, i.e. towards the end of the month
     return first + timedelta(days=int((days_in_month - 1) * rng.random() ** 0.6))
+
+
+def furthest_stage(rng: random.Random, will_win: bool) -> int:
+    """Index (into OPEN_STAGES) of the last open stage a deal reaches.
+    Winners go through all of them; losers drop out according to LOSS_STAGE_WEIGHTS."""
+    if will_win:
+        return len(OPEN_STAGES) - 1
+    return rng.choices(range(len(OPEN_STAGES)), weights=LOSS_STAGE_WEIGHTS)[0]
 
 
 def random_timestamp(rng: random.Random, start: date, end: date) -> datetime:
@@ -251,27 +264,35 @@ def generate(rng: random.Random) -> SeedData:
 
         # Slips: each one pushes the close date 3-6 weeks. Losing deals slip twice as often.
         slip_chance = 0.20 if will_win else 0.40
-        close = planned_close
+        expected_close = planned_close
         slips = 0
         while slips < 3 and rng.random() < slip_chance:
-            close += timedelta(days=rng.randint(21, 45))
+            expected_close += timedelta(days=rng.randint(21, 45))
             slips += 1
-        if not will_win and slips == 0:
-            # Lost deals often die before the planned date.
-            close = create + timedelta(
-                days=int((planned_close - create).days * rng.uniform(0.4, 1))
-            )
+
+        # The funnel: winners pass through every open stage; losers drop out partway.
+        # Each open stage takes an equal slice of the created -> expected close span.
+        furthest = furthest_stage(rng, will_win)
+        span_days = max(1, (expected_close - create).days)
+        if will_win:
+            close = expected_close
+        else:
+            # Lost somewhere inside the last stage it reached.
+            share = (furthest + rng.uniform(0.5, 1.0)) / len(OPEN_STAGES)
+            close = create + timedelta(days=int(span_days * share))
 
         if close < AS_OF:
             stage = WON_STAGE if will_win else LOST_STAGE
             if (AS_OF - close).days <= 21 and rng.random() < 0.15:
-                # Past its close date but never updated: still shows as late-stage open.
-                stage = rng.choice(OPEN_STAGES[3:])
+                # Past its close date but never updated: still shows as open, in the last
+                # stage it actually reached.
+                stage = rng.choice(OPEN_STAGES[3:]) if will_win else OPEN_STAGES[furthest]
         else:
-            # Open: how far through its cycle the deal is decides its stage (with some noise).
-            progress = (AS_OF - create).days / max(1, (close - create).days)
-            progress += rng.uniform(-0.1, 0.1)
-            stage = OPEN_STAGES[min(len(OPEN_STAGES) - 1, max(0, int(progress * 5)))]
+            # Open: how far through its cycle the deal is decides its stage (with some noise),
+            # but a deal that will be lost never gets past the stage it dies in.
+            progress = (AS_OF - create).days / span_days + rng.uniform(-0.1, 0.1)
+            index = min(len(OPEN_STAGES) - 1, max(0, int(progress * len(OPEN_STAGES))))
+            stage = OPEN_STAGES[min(index, furthest)]
 
         is_open = stage in OPEN_STAGES
         product = rng.choice(PRODUCTS)

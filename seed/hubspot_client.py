@@ -144,6 +144,41 @@ class HubSpotClient:
             results.extend(body["results"])
         return results
 
+    def search_ids(self, object_type: str, property_name: str, value: str) -> list[str]:
+        """Ids of every record with property_name == value, following the search cursor."""
+        ids: list[str] = []
+        after: str | None = None
+        while True:
+            body: JSON = {
+                "filterGroups": [
+                    {"filters": [{"propertyName": property_name, "operator": "EQ", "value": value}]}
+                ],
+                "properties": [property_name],
+                "limit": BATCH_SIZE,
+            }
+            if after:
+                body["after"] = after
+            page = self.post(f"/crm/v3/objects/{object_type}/search", body)
+            ids += [r["id"] for r in page["results"]]
+            after = page.get("paging", {}).get("next", {}).get("after")
+            if not after:
+                return ids
+
+    def associated_ids(self, from_type: str, to_type: str, from_ids: Sequence[str]) -> list[str]:
+        """Ids of every `to_type` record linked to the given records (e.g. a deal's notes)."""
+        found: list[str] = []
+        for chunk in chunked([{"id": i} for i in from_ids], BATCH_SIZE):
+            body = self.post(
+                f"/crm/v4/associations/{from_type}/{to_type}/batch/read", {"inputs": list(chunk)}
+            )
+            found += [str(link["toObjectId"]) for r in body["results"] for link in r["to"]]
+        return sorted(set(found))
+
+    def batch_archive(self, object_type: str, ids: Sequence[str]) -> None:
+        """Archive records 100 at a time. Archived = HubSpot's recycle bin (restorable ~90 days)."""
+        for chunk in chunked([{"id": i} for i in ids], BATCH_SIZE):
+            self.post(f"/crm/v3/objects/{object_type}/batch/archive", {"inputs": list(chunk)})
+
     def create_property(self, object_type: str, definition: JSON) -> bool:
         """Create a custom property. Returns False if it already existed (409 Conflict)."""
         try:

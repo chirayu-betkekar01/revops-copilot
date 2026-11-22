@@ -20,7 +20,7 @@ A portfolio project that pulls deals from HubSpot, forecasts quarterly bookings,
    - `docker-compose.yml` (Step 1)
    - ~~Data generator logic in `seed/generator.py` (Step 2)~~ written by Claude at my request
    - ~~Upsert SQL in the sync (Step 3)~~ written by Claude at my request
-   - Forecast SQL query (Step 4)
+   - ~~Forecast SQL query (Step 4)~~ written by Claude at my request
    - Entire comp engine `comp/engine.py` (Step 5)
    - Agent loop in `agents/analyst.py` (Step 6)
 4. **Keep changes small and reviewable.** I read every line before committing.
@@ -36,8 +36,9 @@ A portfolio project that pulls deals from HubSpot, forecasts quarterly bookings,
 - [x] Step 1: repo + Docker Compose. db + api + dashboard run via `just up`; API waits for the db healthcheck (`condition: service_healthy`). `docker-compose.yml` was written by Claude at my request; I did the break-it fix. Local ports: db 5433, api 8010 (5432 and 8000 are used by another project).
 - [x] Step 2: seed HubSpot. 300 companies, 2,000 deals and ~6,400 notes uploaded (`seed_batch=seed-v1`); 8 named reps via the `rep_id` dropdown (stores id, shows name). Generator and 429 backoff written by Claude at my request. Known gap: HubSpot stage history can't be backdated (matters for weekend 2-3 forecasting).
 - [x] Step 3: sync into raw. `just migrate` creates raw.hubspot_{companies,deals,notes,pipelines} (JSONB payloads) + ops.sync_runs; `just sync` does a full paged sync with per-page commits and upserts. Verified: two real syncs give exactly 300 / 2,000 / 6,456 / 1 rows.
-- [ ] **Step 4: views + weighted forecast. NEXT.**
-- [ ] Steps 5-7: see SCOPE.md "MVP build guide".
+- [x] Step 4: views + weighted forecast. staging.stg_* and marts.dim_reps / marts.fct_deals views (sql/views, applied by `just migrate`); `just forecast` stores runs in marts.fct_forecast_runs. Generator now models a stage funnel; HubSpot re-seeded as `seed-v2` (v1 archived). Forecast on v2: 2026 Q4 = $1.63M (decisions.md #46-50).
+- [ ] **Step 5: comp engine. NEXT.**
+- [ ] Steps 6-7: see SCOPE.md "MVP build guide".
 
 Update this section when a step is finished.
 
@@ -87,8 +88,10 @@ just test      # uv run pytest
 just lint      # ruff check + ruff format --check + mypy
 just seed-dry  # generate + check fake data, send nothing
 just seed      # push fake data to HubSpot (asks first)
+just seed-archive seed-v1  # archive one seed batch in HubSpot (recycle bin; asks first)
 just migrate   # create/update tables from sql/migrations (safe to re-run)
 just sync      # full sync HubSpot -> raw.* tables, logged in ops.sync_runs
+just forecast  # weighted pipeline forecast, saved to marts.fct_forecast_runs (--as-of YYYY-MM-DD)
 ```
 
 ## Security rules

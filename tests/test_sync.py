@@ -101,8 +101,9 @@ def db() -> Iterator[psycopg.Connection]:
 
 
 def test_running_the_sync_twice_creates_no_duplicates(db: psycopg.Connection) -> None:
-    first = sync.run_sync(db, fake_hubspot(150), objects=[DEALS])
-    second = sync.run_sync(db, fake_hubspot(150), objects=[DEALS])
+    # property_definitions=() so the test never overwrites the real rep_id definition.
+    first = sync.run_sync(db, fake_hubspot(150), objects=[DEALS], property_definitions=())
+    second = sync.run_sync(db, fake_hubspot(150), objects=[DEALS], property_definitions=())
 
     row = db.execute("SELECT count(*) FROM raw.hubspot_deals WHERE hubspot_id LIKE 'test-%'")
     assert row.fetchone() == (150,)  # not 300
