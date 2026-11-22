@@ -4,16 +4,24 @@ Pulls deals from HubSpot, forecasts quarterly bookings, and models sales comp pl
 that forecast, with AI agents on Amazon Bedrock that answer questions in plain English.
 Full spec: [docs/SCOPE.md](docs/SCOPE.md).
 
-> Work in progress. Currently on Step 1 (repo + Docker Compose).
+> Work in progress. MVP steps 1-5 and 7 are done; Step 6 (the Bedrock analyst agent) is next.
 
 ## Quick start (Windows, PowerShell)
 
 ```powershell
-Copy-Item .env.example .env   # then edit .env and change the password
+Copy-Item .env.example .env   # then edit .env: password + HubSpot service key
 uv sync                       # create .venv with all dependencies
 just up                       # build images, start db + api + dashboard
+just migrate                  # create tables and views
+just seed                     # push synthetic deals into a HubSpot test account (once)
+just sync                     # copy HubSpot into Postgres
+just forecast                 # weighted pipeline forecast for this quarter
+just comp                     # commission payouts for every rep and quarter
 just test                     # run the tests
 ```
+
+Then open the dashboard. Every design decision is logged in
+[docs/notes/decisions.md](docs/notes/decisions.md).
 
 - API: http://localhost:8000/health (interactive docs at `/docs`)
 - Dashboard: http://localhost:8501

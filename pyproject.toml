@@ -10,6 +10,7 @@ dependencies = []
 [dependency-groups]
 api = [
     "fastapi>=0.165.0",
+    "psycopg-pool>=3.3.3",
     "psycopg[binary]>=3.3.9",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -24,15 +25,21 @@ sync = [
     "httpx>=0.28.1",
     "psycopg[binary]>=3.3.9",
 ]
+comp = [
+    "psycopg[binary]>=3.3.9",
+    "pyyaml>=6.0.4",
+]
 # Your laptop gets everything: all groups above plus the dev tools.
 dev = [
     { include-group = "api" },
     { include-group = "dashboard" },
     { include-group = "seed" },
     { include-group = "sync" },
+    { include-group = "comp" },
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "ruff>=0.17.6",
+    "types-pyyaml>=6.0.12.20261122",
 ]
 
 [tool.ruff]

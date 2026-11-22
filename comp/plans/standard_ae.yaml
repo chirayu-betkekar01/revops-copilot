@@ -1,0 +1,25 @@
+# Standard account executive (AE) comp plan. Synthetic numbers from docs/SCOPE.md.
+#
+# Plans are data, not code: change a number here and the next `just comp` uses it.
+# Each version has an effective_from date; a deal is paid under the version in force on the
+# day it closed won. Add a new version (don't edit an old one) to change a plan mid-year,
+# so past payouts stay reproducible.
+#
+# Money and rates are written as quoted strings so they load as exact Decimals,
+# never as floating-point numbers.
+
+plan_id: standard_ae
+name: Standard AE plan
+assigned_reps: all            # every active rep in marts.dim_reps
+
+versions:
+  - version: 1
+    effective_from: 2025-07-01
+    ote: "150000"             # on-target earnings: base + variable at 100% of quota
+    base_salary: "75000"      # 50 / 50 split
+    annual_quota: "600000"    # $150,000 per quarter
+    # base commission rate = variable / annual quota = 75,000 / 600,000 = 12.5%
+    tiers:                    # bounds are fractions of the quarterly quota
+      - { floor: "0.0", ceiling: "1.0", multiplier: "1.0" }   # 0-100%:   12.5%
+      - { floor: "1.0", ceiling: "1.5", multiplier: "1.5" }   # 100-150%: 18.75%
+      - { floor: "1.5", ceiling: null,  multiplier: "2.0" }   # 150%+:    25%

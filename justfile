@@ -50,6 +50,10 @@ sync *ARGS:
 forecast *ARGS:
     uv run python -m forecast.weighted {{ARGS}}
 
+# Commission payouts for every rep and quarter, stored in the comp schema
+comp *ARGS:
+    uv run python -m comp.run {{ARGS}}
+
 # Step 2 break-it: hammer HubSpot (read-only) until it answers 429
 rate-limit-demo:
     uv run python -m seed.rate_limit_demo
@@ -62,4 +66,4 @@ test:
 lint:
     uv run ruff check .
     uv run ruff format --check .
-    uv run mypy app dashboard seed sync forecast tests
+    uv run mypy app dashboard seed sync forecast comp tests

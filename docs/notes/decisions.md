@@ -244,3 +244,121 @@ Format: **Decision**: what we did. *Alternatives*: what else we could have done.
 50. **Forecast run 1 (computed on the old v1 data) is kept in `marts.fct_forecast_runs`.**
     *Why*: stored runs are history; deleting one to make the record look tidy defeats the
     point of storing them.
+
+## Step 5: Comp engine
+
+51. **Plans are YAML data with versions; a version is never edited, a new one is added**
+    (`comp/plans/standard_ae.yaml`, each version has `effective_from`).
+    *Alternatives*: plans in Python code; plans in database tables.
+    *Why*: finance can read and change a YAML file; old versions stay intact, so any past
+    payout can be reproduced exactly.
+
+52. **Money and rates in YAML are quoted strings; an unquoted decimal is rejected.**
+    *Why*: YAML turns `1.5` into a float, and floats can't hold most decimals exactly (0.1).
+    Refusing floats at load time keeps Decimal exact from file to payout.
+
+53. **Base rate and quarterly quota are derived, not stored** (variable / annual quota = 12.5%;
+    quota / 4 = $150k). *Why*: one source for each number; they can't drift apart.
+
+54. **Deals fill the tiers in close-date order (ties broken by deal id); a deal that crosses a
+    tier boundary is split into one commission line per tier.**
+    *Alternatives*: compute the total with the formula and give every deal a blended rate;
+    "retroactive" accelerators (all bookings paid at the highest tier reached).
+    *Why*: each dollar is paid at the rate of the tier it actually landed in, and every line
+    points at one deal, so a rep can see exactly why each deal paid what it did.
+    Retroactive plans exist in the real world, but they're a different plan type.
+
+55. **Commission line grain: run x deal x tier** (SCOPE.md said rep x deal x period).
+    *Why*: the split deals need one line per tier to stay traceable. 472 won deals produced
+    490 lines (18 split).
+
+56. **Mid-quarter plan change: each deal is paid under the plan version in force on its close
+    date.** Its tier position is measured against that version's quota. Attainment is
+    reported against the quota in force on the quarter's last day.
+    *Alternatives*: pro-rate by days; pay the whole quarter under the start or end version.
+    *Why*: simple to explain ("your deal closed on the 20th, the new plan was live").
+    *Revisit*: if quota changes mid-quarter, tier boundaries jump; check with finance.
+
+57. **Rounding: each line rounds half-up to the cent; the rep's payout is the sum of rounded
+    lines.** *Why*: what's paid always equals the lines on the statement. It can differ from
+    SCOPE.md's one-shot formula by at most a cent per line; tests check that bound.
+
+58. **Each quarter starts from zero (no annual true-up or carry-over).**
+    *Revisit*: annual plans, carry-forward of over-attainment, draws (SCOPE.md stretch).
+
+59. **Every active rep gets a row for every quarter, including $0 quarters.**
+    *Why*: a rep who booked nothing must show 0%, not disappear from the report.
+
+60. **Each `just comp` stores a complete run in one transaction**: plan snapshot
+    (`comp.comp_plans`), quotas, `comp.commission_runs`, `comp.rep_quarter_results`,
+    `comp.commission_lines`. Re-running adds a new run instead of overwriting.
+    *Why*: a run is all-or-nothing, and history shows how payouts changed. Readers (API,
+    agents) must pick the latest run (or a specific one).
+
+61. **Credited deals: won, with an amount and a rep, closed on or before `as_of`.** Zero or
+    negative amounts aren't paid (no clawbacks yet); won deals of reps not on the plan are
+    reported, not paid. *Revisit*: clawbacks and splits are SCOPE.md stretch items.
+
+62. **Kept SCOPE.md's $150k quarterly quota although only 0-5 of 8 reps hit it per quarter**
+    (2026 Q3: one rep at 214%, the rest 33-97%). *Why*: realistic (many teams see about half
+    their reps at quota), and the spread exercises every tier. Cost of sales is 12.5-15%.
+    *Revisit*: the weekend 3 scenario work ("quota +10%, tier 2 at 1.75x") changes this anyway.
+
+63. **The engine is pure: no database, no network, no clock.** `comp/run.py` does the I/O.
+    *Why*: SCOPE.md's rule "payouts are a pure function of (plan, quota, credited deals)";
+    makes the 21 engine tests fast and exact, and lets the comp agent call it as a tool later.
+
+## Step 7: API and dashboard (built before Step 6, which needs AWS)
+
+64. **The API is read-only and serves stored runs only.** It never computes a forecast or a
+    payout; it returns the latest (or a chosen) run from `marts.fct_forecast_runs` and the
+    comp schema. *Why*: one place does each calculation (`just forecast`, `just comp`), so the
+    API, dashboard and future agent can never disagree about a number.
+
+65. **Every API database session is READ ONLY at the database level**
+    (`default_transaction_read_only=on` on the pool). *Why*: defence in depth: even a bug or
+    an injected query can't write. *Revisit*: a dedicated read-only Postgres role (Step 6
+    needs one for the agent anyway).
+
+66. **`psycopg_pool` for connections instead of SQLAlchemy** (CLAUDE.md's stack table says
+    SQLAlchemy + Alembic). *Why*: the API only runs a handful of hand-written SELECTs; a pool
+    is all it needs, and SQL stays visible in `app/queries.py`.
+    *Revisit*: when the API gains write endpoints or migrations move to Alembic.
+
+67. **Money travels as JSON strings** (`"18750.00"`, Pydantic's default for Decimal).
+    *Why*: JSON numbers are floats in most clients; strings keep every cent exact.
+
+68. **Inputs validated by Pydantic: `quarter` must be a quarter's first day; `limit` is 1-100;
+    a chat question is 1-2,000 characters.** Bad input -> 422 with a message saying what's
+    wrong (e.g. "must be the first day of a quarter, e.g. 2026-07-01").
+
+69. **Database trouble mid-request returns 503 "Database unavailable", not a bare 500.**
+    *Why*: the client (dashboard) can tell "the database is down" from "the API has a bug".
+
+70. **`POST /agent/chat` exists now as a validated placeholder returning 501.**
+    *Why*: the dashboard's chat box is wired end to end; Step 6 only swaps the inside.
+
+71. **The dashboard talks only to the API, never the database.** GETs are cached for 30s.
+    It checks `/health` first and stops with a clear message if the API or database is down;
+    an API error further down the page is shown as an error, not a crash.
+
+72. **Dashboard uses number tiles and tables, no charts.** *Why*: the content is a few headline
+    numbers and one row per rep; tables keep exact values readable. The only graphic is an
+    attainment bar per rep (display-only float; money is formatted from Decimal strings).
+    *Known nit*: the bar uses Streamlit's default red accent, which can read as "bad".
+    *Revisit*: a Streamlit theme, and a forecast trend chart once there are many runs.
+
+73. **The forecast tile shows the change vs the previous run for the same quarter.**
+    *Why*: "why did the number move?" is the question stored runs exist to answer.
+
+74. **Chat box sits inline at the end of the page, fixed height.** *Why*: Streamlit pins a
+    top-level chat input over the bottom of the window, and in 1.67 its default height
+    rendered ~180px tall, covering the payout table.
+
+75. **Bug caught by the dashboard test: negative money read "$-562,950" and Streamlit showed
+    a green up arrow for a drop** (it reads a leading minus to pick the arrow). Fixed to
+    "-$562,950"; the test now asserts the arrow points down.
+
+76. **Testing: API endpoint tests swap the DB dependency for a connection inside a rolled-back
+    transaction (made-up 2099 runs); dashboard tests use Streamlit's AppTest with a fake
+    `httpx`** (API down, DB down, mid-page error, full render, chat).

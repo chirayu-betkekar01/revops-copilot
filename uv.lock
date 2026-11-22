@@ -1122,6 +1122,18 @@ wheels = [
 ]
 
 [[package]]
+name = "psycopg-pool"
+version = "3.3.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/74/5e/c0664b968b102ff68b811d999c728546c48d5c1eec03e3bbaf88c0cb4472/psycopg_pool-3.3.3.tar.gz", hash = "sha256:df87b5d9d0ad7db37f6cdad4fa8ce113d250f5997f6db38e9a99192fb67f9e1d", size = 32006, upload-time = "2026-09-22T15:53:24.947Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/b4/452c6607a0f479465cd8a9b0d9956919fcb150050c1f83f9f11e6b8ee8dc/psycopg_pool-3.3.3-py3-none-any.whl", hash = "sha256:9b9cd6a4fcec47a410f7e82d408540e7f77b478509e91b44c1a5457a13e5ff37", size = 40304, upload-time = "2026-09-22T15:53:23.712Z" },
+]
+
+[[package]]
 name = "pyarrow"
 version = "26.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1465,7 +1477,12 @@ source = { virtual = "." }
 api = [
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "psycopg-pool" },
     { name = "uvicorn", extra = ["standard"] },
+]
+comp = [
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pyyaml" },
 ]
 dashboard = [
     { name = "httpx" },
@@ -1476,9 +1493,12 @@ dev = [
     { name = "httpx" },
     { name = "mypy" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "psycopg-pool" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ruff" },
     { name = "streamlit" },
+    { name = "types-pyyaml" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 seed = [
@@ -1495,7 +1515,12 @@ sync = [
 api = [
     { name = "fastapi", specifier = ">=0.165.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.9" },
+    { name = "psycopg-pool", specifier = ">=3.3.3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
+]
+comp = [
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.9" },
+    { name = "pyyaml", specifier = ">=6.0.4" },
 ]
 dashboard = [
     { name = "httpx", specifier = ">=0.28.1" },
@@ -1506,9 +1531,12 @@ dev = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mypy", specifier = ">=2.4.1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.9" },
+    { name = "psycopg-pool", specifier = ">=3.3.3" },
     { name = "pytest", specifier = ">=9.2.0" },
+    { name = "pyyaml", specifier = ">=6.0.4" },
     { name = "ruff", specifier = ">=0.17.6" },
     { name = "streamlit", specifier = ">=1.67.0" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20261122" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 seed = [{ name = "httpx", specifier = ">=0.28.1" }]
@@ -1690,6 +1718,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/38/47/ea7596bda2d303370b6129688e09a44e5faa64e5b9d86cba4d89ae60a16f/streamlit-1.67.0.tar.gz", hash = "sha256:58159dae1199212250bfa5fbba0740996129003266c2c37d465151ef76c48f3b", size = 10672027, upload-time = "2026-11-05T19:53:54.821Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/58/c4/59f60e52e8f679488bf0caecbe3a8469af1d3d72c352bb0f306915a3e667/streamlit-1.67.0-py3-none-any.whl", hash = "sha256:f29da87c443bfbdfc52738616e3d65745d438e718da8faf69e2be0da1e52ce64", size = 11235773, upload-time = "2026-11-05T19:53:51.688Z" },
+]
+
+[[package]]
+name = "types-pyyaml"
+version = "6.0.12.20261122"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/fe/e4d32b089d06f3b5d2f3f1909b1cb450ce2e18ea6e2c1863d2b29ad0090e/types_pyyaml-6.0.12.20261122.tar.gz", hash = "sha256:7fa577c893a1db255cbb02320884ffcb97b7a219fe515bec6c5f15d5d3af41ed", size = 19093, upload-time = "2026-11-22T08:57:28.481Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/71/8dc5553ca25c3a4799ce789f8300d2c3933d427585222c431c77450ed60d/types_pyyaml-6.0.12.20261122-py3-none-any.whl", hash = "sha256:689fbbe883b60471166dede9dba6ac0dbdbcf0ea98062d7ec195430f5bbdb009", size = 21356, upload-time = "2026-11-22T08:57:27.509Z" },
 ]
 
 [[package]]
