@@ -1,0 +1,11 @@
+# Keep these out of Docker images: secrets, your local venv (Windows binaries
+# won't run in Linux anyway), git history and caches.
+.env
+.venv/
+.git/
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+docs/
+tests/

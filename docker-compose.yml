@@ -1,0 +1,57 @@
+# Local stack for RevOps Copilot: Postgres, the FastAPI service and the Streamlit dashboard.
+# Docker Compose reads .env from this folder automatically and fills in every ${...} below.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # laptop port : container port
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Named volume: the database files live here, so data survives `just down`.
+      # `docker compose down -v` deletes it (and all your data).
+      - pgdata:/var/lib/postgresql/data
+      # SQL files Postgres runs once, on the first start with an empty volume.
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # pg_isready asks "are you accepting connections?". $$ means "use the container's
+      # own variable", not one from .env.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: .                 # repo root, so the Dockerfile can see pyproject.toml + uv.lock
+      dockerfile: app/Dockerfile
+    environment:
+      # Host is "db" (the service name above), not localhost.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    ports:
+      # Laptop side is configurable; containers always talk to each other on 8000.
+      - "${API_PORT:-8000}:8000"
+    # BREAK-IT EXERCISE: this only waits for the db container to START, not to be READY.
+    # Your job in the exercise is to change it so the API waits for the healthcheck.
+    depends_on:
+      db:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "${DASHBOARD_PORT:-8501}:8501"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

@@ -1,0 +1,12 @@
+# Store every text file with LF line endings, even on Windows.
+# Shell scripts and Dockerfiles break inside Linux containers if they have CRLF.
+* text=auto eol=lf
+
+# Windows-only scripts need CRLF to run correctly.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touch binary files.
+*.png binary
+*.jpg binary
+*.pdf binary
