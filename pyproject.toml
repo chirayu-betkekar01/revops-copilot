@@ -8,7 +8,14 @@ dependencies = []
 # Dependency groups: each Docker image installs only the group it needs,
 # so the API image doesn't carry Streamlit (and its ~100 MB of pandas/pyarrow).
 [dependency-groups]
+agent = [
+    "boto3>=1.44.9",
+    "psycopg[binary]>=3.3.9",
+    "sqlglot>=30.33.0",
+]
+# The API runs the analyst agent behind /agent/chat, so it includes the agent group.
 api = [
+    { include-group = "agent" },
     "fastapi>=0.165.0",
     "psycopg-pool>=3.3.3",
     "psycopg[binary]>=3.3.9",
@@ -54,6 +61,11 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+# boto3/botocore ship without type hints; the agent wraps the client in a typed Protocol.
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*", "botocore", "botocore.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

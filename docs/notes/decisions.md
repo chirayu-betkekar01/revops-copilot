@@ -362,3 +362,115 @@ Format: **Decision**: what we did. *Alternatives*: what else we could have done.
 76. **Testing: API endpoint tests swap the DB dependency for a connection inside a rolled-back
     transaction (made-up 2099 runs); dashboard tests use Streamlit's AppTest with a fake
     `httpx`** (API down, DB down, mid-page error, full render, chat).
+
+## Step 6: Forecast analyst agent
+
+77. **Built on Amazon Nova Pro (`us.amazon.nova-pro-v1:0`), not Claude, for now.** The account
+    can list Claude models but can't use them: Bedrock reports the Anthropic agreement as
+    `NOT_AVAILABLE` even with the use-case form on file, while Nova (not sold through AWS
+    Marketplace) works. Most likely cause: the account is on AWS's Free plan, which has no
+    Marketplace access. *Why Nova*: unblocks Step 6 today. The model is one setting
+    (`BEDROCK_MODEL_ID`); nothing in the loop is model-specific. *Revisit*: upgrade the account
+    plan, then set `BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-5-5` (CLAUDE.md's choice).
+
+78. **AWS access: an IAM Identity Center user with a permission set, CLI profile `revops` via
+    SSO; no access keys anywhere** (not in code, `.env` or images).
+    *Known gap*: the permission set uses `AmazonBedrockFullAccess`; the Bedrock guidance is to
+    scope to `bedrock:InvokeModel` on the specific inference-profile and foundation-model ARNs.
+    *Revisit*: tighten once the final model is settled.
+
+79. **Five independent safety layers for agent SQL**: (1) system prompt, (2) sqlglot guard,
+    (3) the `agent_ro` login can SELECT only on `marts`, (4) read-only transactions,
+    (5) a 5-second statement timeout (set on the role and again on the session).
+    *Why*: SCOPE.md's "defense in depth"; the DB tests run bad SQL *with the guard skipped*
+    and the role alone still refuses writes, other schemas and slow queries.
+
+80. **The guard parses SQL into a syntax tree (sqlglot) and uses a table allowlist**, not
+    keyword matching and not a schema check alone. *Why*: text matching is easy to fool
+    (comments, casing, `SELECT ... INTO`); and Postgres searches `pg_catalog` before `marts`,
+    so an unqualified `pg_roles` would slip past a schema-only check. Every query gets a
+    LIMIT of at most 200 (added or lowered).
+
+81. **`agent_ro` is created by `sync/migrate.py`, password from `.env`** (quoted with
+    `sql.Literal`), and its grants are re-applied on every migrate. *Why*: SQL files can't read
+    env vars; views are dropped and recreated each migrate, which drops their grants.
+
+82. **Tool problems go back to the model as `toolResult` with `status: error`**
+    (rejected SQL, bad column, unknown tool, bad argument). *Why*: the model can read the reason
+    and fix its query; only infrastructure failures stop the loop.
+
+83. **Loop limits: at most 8 model calls, `maxTokens` 1024 on every call, temperature 0.**
+    `<thinking>` text some models emit is stripped from the answer. Outcomes: `answered`,
+    `max_turns`, `stopped`. *Why*: an unset maxTokens reserves the model's maximum in quota;
+    a turn cap stops runaway loops; temperature 0 makes tool use more repeatable.
+
+84. **Forecast numbers come from `get_forecast_run` (stored runs), never recomputed by the
+    agent**; the prompt forbids mental arithmetic (use SQL or `compare_forecast_runs`).
+    *Why*: CLAUDE.md rule 7: agents never invent numbers; the dashboard and the agent quote the
+    same stored run.
+
+85. **The forecast analyst can't see the comp schema.** Payout questions belong to the comp
+    scenario agent (weekend 3), which will call the comp engine as a tool.
+
+86. **Every agent call is audit-logged to `ops.agent_logs`** (question, answer, every tool call
+    with its input, tokens, latency, status, error), written as the main user because
+    `agent_ro` can't write. A logging failure doesn't block the answer; AWS failures are logged
+    too. Cost isn't stored: prices aren't in the data, and CLAUDE.md says never invent numbers.
+
+87. **`/agent/chat` returns the tool calls (with exact SQL); the dashboard shows them under
+    "How I got this".** Bedrock login/access problems return 503 with the fix
+    (`aws sso login --profile revops`).
+
+88. **The API container mounts `~/.aws` (writable) and uses `AWS_PROFILE=revops`.**
+    *Why*: no keys in the image; writable because botocore refreshes the cached SSO token.
+    *Revisit*: on AWS (weekend 4) the runtime gets an IAM role instead.
+
+89. **boto3 client: one shared instance, adaptive retries (5), 60s read timeout.** boto3 has no
+    type hints, so the loop depends on a small typed `ConverseClient` Protocol (tests pass a
+    scripted fake).
+
+90. **`just migrate` connects with a 5-second timeout.** Found when Docker was off: it hung
+    forever waiting for a database that wasn't there.
+
+91. **The agent's grants are re-applied at the end of every `migrate()` call**, not only when the
+    role is created. *Why*: found in the first live run ("permission denied for view
+    fct_deals"): the test suite calls `migrate()`, which recreates the views and drops their
+    grants. A regression test now recreates the views and checks the agent can still read them.
+
+92. **`fct_deals.close_quarter_label` ("2026 Q3") and `quarter_label` on forecast results.**
+    *Why*: in the first live run the model converted `2025-10-01` to quarter names itself and
+    shifted every label back one quarter (right numbers, wrong quarters). Giving it the label in
+    the data removes that class of error instead of hoping a prompt rule is obeyed.
+
+93. **The prompt states today's date, the current quarter (in progress) and the last completed
+    quarter, computed in Python, plus a glossary** (bookings, closed, win rate by deal count,
+    open vs weighted pipeline, forecast). *Why*: the eval exposed two meaning errors: counting
+    the in-progress quarter as "completed", and answering "open pipeline" with the weighted
+    figure. Grounding facts the model can't reliably work out on its own fixed both.
+
+94. **Live eval set (`just eval [model]`): 7 cases, expected answers computed from Postgres on
+    every run**: forecast, top rep, win rate with correct quarter labels, open pipeline, and
+    three attacks (delete, show every table, run a DELETE via the tool). It also checks the
+    deal count is unchanged afterwards. *Why*: a repeatable yardstick for prompt and model
+    changes; it's the seed of SCOPE.md's 30-question eval set (weekend 3).
+    *Honesty note*: the first wording of the open-pipeline question ("expected to close") was
+    ambiguous and read as weighted; it was reworded to ask by close date.
+
+95. **Default model: Nova 2 Lite (`us.amazon.nova-2-lite-v1:0`).** Two runs each: Nova Pro and
+    Nova 2 Lite both 14/14; Lite was faster (about 10-11s vs 14-17s for the set) and is the
+    lighter tier. Nova Premier is listed but returns "end of life".
+    *Caveat*: 7 questions is a small sample. *Revisit*: re-run `just eval` with Claude Sonnet
+    once Anthropic access works; CLAUDE.md's choice stays Claude.
+
+96. **Incident (2026-11-22): Docker Desktop's data disk was reset after a crash; all local
+    containers and volumes were lost** (this project's Postgres, and other projects' Supabase
+    and Postgres containers). Cause not proven: the new disk was created at the first boot
+    after the PC restart (before any WSL shutdown or folder changes), so either "Reset to
+    factory defaults" on Docker's error dialog or Docker's crash recovery. Startup was blocked by
+    a stale `AppData\Local\Docker\run\userAnalyticsOtlpHttp.sock` that Windows wouldn't delete;
+    the `run` folder was renamed to `run.stale-20261122-163931` (delete it after a reboot).
+    *Recovery*: HubSpot is the source of truth, so `just migrate` + `just sync --full-refresh`
+    + `just forecast` + `just comp` rebuilt everything; forecast and payouts matched the
+    pre-incident numbers exactly. Run ids restart at 8 (Postgres never reuses identity values).
+    *Lesson*: local Docker volumes are disposable; anything that matters must be rebuildable
+    from a source of truth, which this design already is.

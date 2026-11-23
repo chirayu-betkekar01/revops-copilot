@@ -14,7 +14,8 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --group api
 
-# Code last, because it changes most often.
+# Code last, because it changes most often. The API runs the analyst agent, so it needs agents/.
+COPY agents ./agents
 COPY app ./app
 
 EXPOSE 8000

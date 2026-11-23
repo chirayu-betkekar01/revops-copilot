@@ -23,6 +23,9 @@ SELECT
     d.created_date,
     d.close_date,
     date_trunc('quarter', d.close_date)::date             AS close_quarter,
+    -- Ready-made label ("2026 Q3") so nobody (human or agent) has to convert dates to quarters:
+    -- the first live agent test mislabelled every quarter by one when it did that itself.
+    to_char(d.close_date, 'YYYY "Q"Q')                    AS close_quarter_label,
     -- Closed deals: created -> closed. Open deals: created -> today.
     CASE WHEN COALESCE(s.is_closed, false)
          THEN d.close_date - d.created_date

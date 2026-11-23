@@ -22,7 +22,7 @@ A portfolio project that pulls deals from HubSpot, forecasts quarterly bookings,
    - ~~Upsert SQL in the sync (Step 3)~~ written by Claude at my request
    - ~~Forecast SQL query (Step 4)~~ written by Claude at my request
    - ~~Entire comp engine `comp/engine.py` (Step 5)~~ written by Claude at my request
-   - Agent loop in `agents/analyst.py` (Step 6)
+   - ~~Agent loop in `agents/analyst.py` (Step 6)~~ written by Claude at my request
 4. **Keep changes small and reviewable.** I read every line before committing.
 5. **When I ask "why?", teach, don't just fix.** Point to the concept and the official docs.
 6. **End each step with:** a summary of what changed, the break-it exercise from SCOPE.md, and 2-3 self-check questions for me to answer.
@@ -38,7 +38,8 @@ A portfolio project that pulls deals from HubSpot, forecasts quarterly bookings,
 - [x] Step 3: sync into raw. `just migrate` creates raw.hubspot_{companies,deals,notes,pipelines} (JSONB payloads) + ops.sync_runs; `just sync` does a full paged sync with per-page commits and upserts. Verified: two real syncs give exactly 300 / 2,000 / 6,456 / 1 rows.
 - [x] Step 4: views + weighted forecast. staging.stg_* and marts.dim_reps / marts.fct_deals views (sql/views, applied by `just migrate`); `just forecast` stores runs in marts.fct_forecast_runs. Generator now models a stage funnel; HubSpot re-seeded as `seed-v2` (v1 archived). Forecast on v2: 2026 Q4 = $1.63M (decisions.md #46-50).
 - [x] Step 5: comp engine. Plan in `comp/plans/standard_ae.yaml` (versioned, quoted decimals); pure engine `comp/engine.py`; `just comp` stores plan snapshot, quotas, per-rep results and per-deal-per-tier lines in the comp schema. Audited: lines tie to payouts and every won deal is credited exactly once.
-- [ ] **Step 6: forecast analyst agent on Bedrock. NEXT.** Needs AWS account setup (deferred from Step 0).
+- [x] Step 6: forecast analyst agent. Hand-written Converse tool-calling loop (`agents/analyst.py`) with `run_sql` (sqlglot guard: one SELECT, marts allowlist, forced LIMIT 200), `get_forecast_run`, `compare_forecast_runs`; read-only `agent_ro` Postgres role with 5s timeout; every call logged to `ops.agent_logs`; wired into `/agent/chat` and the dashboard. AWS: IAM Identity Center user, CLI profile `revops` (SSO). **Runs on Amazon Nova 2 Lite for now**: the account can't use Anthropic models yet (agreement NOT_AVAILABLE, likely Free plan); switch via `BEDROCK_MODEL_ID`. Live eval `just eval`: 7/7 (decisions.md #77-96).
+- [ ] **NEXT: MVP wrap-up** (README + architecture diagram, push to GitHub, tag v0.1), then weekend 2.
 - [x] Step 7 (done before 6): read-only FastAPI (`/forecast`, `/forecast/runs`, `/comp/runs/latest`, `/comp/payouts`, `/comp/payouts/{rep_id}/lines`, `/agent/chat` = 501 placeholder) on a read-only connection pool; Streamlit dashboard with forecast tiles, payouts table, deal-by-deal drill-down and chat box. Dashboard reports API/DB down instead of crashing. API on :8010, dashboard on :8501.
 
 Update this section when a step is finished.
@@ -94,6 +95,8 @@ just migrate   # create/update tables from sql/migrations (safe to re-run)
 just sync      # full sync HubSpot -> raw.* tables, logged in ops.sync_runs
 just forecast  # weighted pipeline forecast, saved to marts.fct_forecast_runs (--as-of YYYY-MM-DD)
 just comp      # commission payouts for every rep x quarter, stored in the comp schema
+just ask "..." # ask the forecast analyst agent (needs `aws sso login --profile revops`)
+just eval      # live agent eval set, real Bedrock calls (optional: a model id)
 ```
 
 ## Security rules

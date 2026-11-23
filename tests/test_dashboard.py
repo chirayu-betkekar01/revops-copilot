@@ -115,14 +115,40 @@ def test_an_api_error_mid_page_is_shown_not_crashed(monkeypatch: pytest.MonkeyPa
     assert "Database unavailable" in at.error[0].value
 
 
-def test_chat_says_the_agent_is_not_built_yet(monkeypatch: pytest.MonkeyPatch) -> None:
-    def post(url: str, **kwargs: Any) -> httpx.Response:
-        body = {"detail": "The analyst agent isn't built yet (Step 6, needs AWS Bedrock)."}
-        return httpx.Response(501, json=body, request=httpx.Request("POST", url))
+CHAT_REPLY = {
+    "answer": "The Q4 forecast is $1,631,300 (run 2).", "status": "answered",
+    "model_id": "us.amazon.nova-pro-v1:0", "turns": 2, "input_tokens": 900,
+    "output_tokens": 60, "latency_ms": 1500, "log_id": 7,
+    "tool_calls": [
+        {"name": "run_sql", "input": {"query": "SELECT 1"}, "ok": True, "error": None},
+        {"name": "get_forecast_run", "input": {}, "ok": True, "error": None},
+    ],
+}  # fmt: skip
 
-    monkeypatch.setattr(httpx, "post", post)
+
+def fake_post(status: int, body: dict[str, Any]) -> Callable[..., httpx.Response]:
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(status, json=body, request=httpx.Request("POST", url))
+
+    return post
+
+
+def test_chat_shows_the_answer_and_the_sql_behind_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(httpx, "post", fake_post(200, CHAT_REPLY))
     at = run_app(monkeypatch, HEALTHY)
     at.chat_input[0].set_value("What's our P50?").run()
 
+    assert not at.exception
     assert [m.name for m in at.chat_message] == ["user", "assistant"]
-    assert "Step 6" in at.chat_message[1].markdown[0].value
+    assert "$1,631,300" in at.chat_message[1].markdown[0].value
+    assert at.expander[-1].label == "How I got this (2 tool calls)"
+    assert at.code[-1].value == "SELECT 1"
+
+
+def test_chat_shows_why_the_agent_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    detail = {"detail": "AWS login expired. Run: aws sso login --profile revops"}
+    monkeypatch.setattr(httpx, "post", fake_post(503, detail))
+    at = run_app(monkeypatch, HEALTHY)
+    at.chat_input[0].set_value("What's our P50?").run()
+
+    assert "aws sso login" in at.chat_message[1].markdown[0].value

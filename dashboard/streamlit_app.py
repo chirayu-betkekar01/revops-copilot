@@ -209,6 +209,7 @@ except ApiError as exc:
 
 # ---------- Chat ----------
 st.header("Ask the analyst")
+st.caption("Questions about the forecast, pipeline and bookings. Every number comes from a query.")
 if "messages" not in st.session_state:
     st.session_state.messages = []
 conversation = st.container()  # reserved above the input, filled in once any answer is in
@@ -216,19 +217,45 @@ conversation = st.container()  # reserved above the input, filled in once any an
 # Inside a container the chat box sits inline at the end of the page, instead of being pinned
 # over the bottom of the window (where it covered the payout tables).
 with st.container():
-    question = st.chat_input("Ask about the forecast or payouts", max_chars=2000, height=80)
+    question = st.chat_input("Ask about the forecast or pipeline", max_chars=2000, height=80)
 if question:
     st.session_state.messages.append({"role": "user", "content": question})
+    reply: dict[str, Any] = {"role": "assistant"}
     try:
-        resp = httpx.post(f"{API_URL}/agent/chat", json={"question": question}, timeout=60)
+        resp = httpx.post(f"{API_URL}/agent/chat", json={"question": question}, timeout=90)
+        body = resp.json()
         if resp.status_code == 200:
-            answer = resp.json()["answer"]
+            reply |= {"content": body["answer"], "details": body}
         else:
-            answer = resp.json().get("detail", f"The API answered {resp.status_code}.")
+            reply["content"] = body.get("detail", f"The API answered {resp.status_code}.")
     except httpx.HTTPError as exc:
-        answer = f"Can't reach the API ({type(exc).__name__})."
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+        reply["content"] = f"Can't reach the API ({type(exc).__name__})."
+    st.session_state.messages.append(reply)
+
+
+def show_details(details: dict[str, Any]) -> None:
+    """How the answer was reached: every tool call, with the exact SQL that ran."""
+    calls = details["tool_calls"]
+    with st.expander(f"How I got this ({len(calls)} tool calls)"):
+        for call in calls:
+            mark = "ok" if call["ok"] else "failed"
+            st.markdown(f"**{call['name']}** ({mark})")
+            if call["name"] == "run_sql":
+                st.code(call["input"].get("query", ""), language="sql")
+            else:
+                st.json(call["input"])
+            if call["error"]:
+                st.caption(call["error"])
+        st.caption(
+            f"{details['model_id']}, {details['turns']} model calls, "
+            f"{details['input_tokens']:,} in / {details['output_tokens']:,} out tokens, "
+            f"{details['latency_ms'] / 1000:.1f}s"
+        )
+
 
 with conversation:
     for message in st.session_state.messages:
-        st.chat_message(message["role"]).write(message["content"])
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+            if message.get("details"):
+                show_details(message["details"])

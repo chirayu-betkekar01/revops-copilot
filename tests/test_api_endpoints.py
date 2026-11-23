@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
+from agents.analyst import AgentResult, AgentUnavailable, ToolCall
 from app import main
 
 # Not using `with TestClient(...)`, so the startup DB check and pool (lifespan) don't run.
@@ -59,10 +60,61 @@ def test_chat_rejects_an_empty_question(no_db: None) -> None:
     assert client.post("/agent/chat", json={"question": ""}).status_code == 422
 
 
-def test_chat_says_the_agent_is_not_built_yet(no_db: None) -> None:
+def fake_agent(question: str) -> AgentResult:
+    return AgentResult(
+        question=question,
+        answer="The Q4 forecast is $1,631,300 (run 2).",
+        status="answered",
+        model_id="fake-model",
+        turns=2,
+        tool_calls=[ToolCall("get_forecast_run", {}, ok=True)],
+        input_tokens=900,
+        output_tokens=60,
+        latency_ms=1500,
+    )
+
+
+@pytest.fixture
+def chat_overrides() -> Iterator[list[tuple[AgentResult | None, str | None]]]:
+    logged: list[tuple[AgentResult | None, str | None]] = []
+
+    def fake_log(result: AgentResult | None, *, question: str, error: str | None) -> int:
+        logged.append((result, error))
+        return 41
+
+    main.app.dependency_overrides[main.get_agent] = lambda: fake_agent
+    main.app.dependency_overrides[main.get_agent_logger] = lambda: fake_log
+    yield logged
+    main.app.dependency_overrides.clear()
+
+
+def test_chat_returns_the_answer_and_how_it_was_reached(
+    chat_overrides: list[tuple[AgentResult | None, str | None]],
+) -> None:
     resp = client.post("/agent/chat", json={"question": "What's our P50?"})
-    assert resp.status_code == 501
-    assert "Step 6" in resp.json()["detail"]
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["answer"].startswith("The Q4 forecast")
+    assert body["tool_calls"] == [
+        {"name": "get_forecast_run", "input": {}, "ok": True, "error": None}
+    ]
+    assert body["log_id"] == 41
+    assert chat_overrides[0][1] is None  # logged, no error
+
+
+def test_chat_reports_bedrock_trouble_as_503(
+    chat_overrides: list[tuple[AgentResult | None, str | None]],
+) -> None:
+    def broken(question: str) -> AgentResult:
+        raise AgentUnavailable("AWS login expired. Run: aws sso login --profile revops")
+
+    main.app.dependency_overrides[main.get_agent] = lambda: broken
+    resp = client.post("/agent/chat", json={"question": "What's our P50?"})
+
+    assert resp.status_code == 503
+    assert "aws sso login" in resp.json()["detail"]
+    assert chat_overrides[0] == (None, "AWS login expired. Run: aws sso login --profile revops")
 
 
 # ---------- Real queries on made-up 2099 runs ----------

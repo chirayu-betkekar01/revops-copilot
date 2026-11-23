@@ -4,7 +4,7 @@ to floating point on the way to the client."""
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import AfterValidator, BaseModel, Field
 
@@ -82,6 +82,25 @@ class CommissionLine(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
+
+
+class ToolCallOut(BaseModel):
+    name: str
+    input: dict[str, Any] = Field(description="Arguments the model sent, e.g. the SQL query")
+    ok: bool
+    error: str | None = None
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    status: str = Field(description="answered | max_turns | stopped")
+    model_id: str
+    turns: int = Field(description="Model calls made in the loop")
+    tool_calls: list[ToolCallOut]
+    input_tokens: int
+    output_tokens: int
+    latency_ms: int
+    log_id: int | None = Field(description="Row in ops.agent_logs (None if logging failed)")
 
 
 class ErrorResponse(BaseModel):

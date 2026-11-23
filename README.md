@@ -4,7 +4,8 @@ Pulls deals from HubSpot, forecasts quarterly bookings, and models sales comp pl
 that forecast, with AI agents on Amazon Bedrock that answer questions in plain English.
 Full spec: [docs/SCOPE.md](docs/SCOPE.md).
 
-> Work in progress. MVP steps 1-5 and 7 are done; Step 6 (the Bedrock analyst agent) is next.
+> MVP steps 1-7 are done. The analyst agent runs on Amazon Nova 2 Lite until the AWS account can
+> use Anthropic models (one setting: `BEDROCK_MODEL_ID`).
 
 ## Quick start (Windows, PowerShell)
 
@@ -17,6 +18,8 @@ just seed                     # push synthetic deals into a HubSpot test account
 just sync                     # copy HubSpot into Postgres
 just forecast                 # weighted pipeline forecast for this quarter
 just comp                     # commission payouts for every rep and quarter
+aws sso login --profile revops  # Bedrock access for the agent (see .env.example)
+just ask "What's our forecast this quarter?"
 just test                     # run the tests
 ```
 

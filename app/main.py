@@ -6,7 +6,7 @@
     GET  /comp/runs/latest                the latest commission run and the quarters it covers
     GET  /comp/payouts                    every rep's payout for one quarter
     GET  /comp/payouts/{rep_id}/lines     the commission lines (deal by deal) behind a payout
-    POST /agent/chat                      placeholder until the Step 6 agent exists
+    POST /agent/chat                      ask the forecast analyst agent (Amazon Bedrock)
 
 Interactive docs: /docs. All numbers come from stored runs (`just forecast`, `just comp`);
 the API never computes or invents a figure itself.
@@ -14,8 +14,9 @@ the API never computes or invents a figure itself.
 
 import logging
 import os
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any
@@ -26,9 +27,11 @@ from fastapi.responses import JSONResponse
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool, PoolTimeout
 
+from agents.analyst import AgentResult, AgentUnavailable, ask, log_result
 from app import queries
 from app.models import (
     ChatRequest,
+    ChatResponse,
     CommissionLine,
     CompRun,
     ErrorResponse,
@@ -36,6 +39,7 @@ from app.models import (
     PayoutsResponse,
     QuarterStart,
     RepPayout,
+    ToolCallOut,
 )
 
 logger = logging.getLogger("uvicorn.error")
@@ -193,10 +197,53 @@ def commission_lines(conn: Conn, rep_id: str, quarter: QuarterStart) -> list[Com
 # ---------- Agent ----------
 
 
-@app.post("/agent/chat", status_code=501, responses={501: {"model": ErrorResponse}})
-def agent_chat(body: ChatRequest) -> JSONResponse:
-    """Placeholder: the forecast analyst agent arrives in Step 6 (Amazon Bedrock)."""
-    return JSONResponse(
-        status_code=501,
-        content={"detail": "The analyst agent isn't built yet (Step 6, needs AWS Bedrock)."},
+AgentRunner = Callable[[str], AgentResult]
+AgentLogger = Callable[..., int]
+
+
+def get_agent() -> AgentRunner:
+    """The real agent (Bedrock + read-only tools). Tests swap in a fake."""
+    return ask
+
+
+def get_agent_logger() -> AgentLogger:
+    return log_result
+
+
+def try_log(
+    log: AgentLogger, result: AgentResult | None, question: str, error: str | None
+) -> int | None:
+    """Audit-log the call; a logging failure must not hide the answer from the user."""
+    try:
+        return log(result, question=question, error=error)
+    except psycopg.Error as exc:
+        logger.warning("Could not write ops.agent_logs: %s", exc)
+        return None
+
+
+@app.post("/agent/chat", responses={503: {"model": ErrorResponse}})
+def agent_chat(
+    body: ChatRequest,
+    agent: Annotated[AgentRunner, Depends(get_agent)],
+    log: Annotated[AgentLogger, Depends(get_agent_logger)],
+) -> ChatResponse:
+    """Ask the forecast analyst. Every number in the answer comes from a tool call, and the
+    tool calls (with the exact SQL) are returned so the answer can be checked."""
+    try:
+        result = agent(body.question)
+    except AgentUnavailable as exc:
+        try_log(log, None, body.question, str(exc))
+        raise HTTPException(503, str(exc)) from exc
+
+    log_id = try_log(log, result, body.question, None)
+    return ChatResponse(
+        answer=result.answer,
+        status=result.status,
+        model_id=result.model_id,
+        turns=result.turns,
+        tool_calls=[ToolCallOut(**asdict(call)) for call in result.tool_calls],
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        latency_ms=result.latency_ms,
+        log_id=log_id,
     )

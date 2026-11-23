@@ -33,11 +33,20 @@ services:
     environment:
       # Host is "db" (the service name above), not localhost.
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Analyst agent (Step 6): its read-only DB login and the Bedrock model/profile to use.
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD}
+      AWS_PROFILE: ${AWS_PROFILE:-revops}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-us.amazon.nova-2-lite-v1:0}
+    volumes:
+      # Your AWS CLI config + SSO login cache, so the agent can call Bedrock as you.
+      # No keys are copied into the image; run `aws sso login --profile revops` on your laptop
+      # when the login expires. Writable because botocore refreshes the cached SSO token.
+      - ${USERPROFILE}/.aws:/root/.aws
     ports:
       # Laptop side is configurable; containers always talk to each other on 8000.
       - "${API_PORT:-8000}:8000"
-    # BREAK-IT EXERCISE: this only waits for the db container to START, not to be READY.
-    # Your job in the exercise is to change it so the API waits for the healthcheck.
+    # Wait until Postgres passes its healthcheck, not just until its container starts.
     depends_on:
       db:
         condition: service_healthy

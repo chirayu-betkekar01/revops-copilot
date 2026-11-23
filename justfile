@@ -54,6 +54,14 @@ forecast *ARGS:
 comp *ARGS:
     uv run python -m comp.run {{ARGS}}
 
+# Ask the forecast analyst agent a question (Amazon Bedrock; needs `aws sso login --profile revops`)
+ask QUESTION:
+    uv run python -m agents.cli "{{QUESTION}}"
+
+# Live eval set for the agent (real Bedrock calls, a few cents). Optional: a model/profile id
+eval *MODEL:
+    uv run python -m agents.evals {{MODEL}}
+
 # Step 2 break-it: hammer HubSpot (read-only) until it answers 429
 rate-limit-demo:
     uv run python -m seed.rate_limit_demo
@@ -66,4 +74,4 @@ test:
 lint:
     uv run ruff check .
     uv run ruff format --check .
-    uv run mypy app dashboard seed sync forecast comp tests
+    uv run mypy app dashboard seed sync forecast comp agents tests
